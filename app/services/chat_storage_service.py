@@ -41,7 +41,6 @@ def create_chat(conv_id : int, input : str) -> None:
             """, (conv_id, input)
             )
 
-# TODO proper annotations
 def get_conv(conv_id : int) -> list[ChatCompletedReponse]:
     with sqlite3.connect(settings.DATABASE_PATH) as conn:
         cursor = conn.execute("""
