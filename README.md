@@ -1,6 +1,8 @@
 # JMAI - The Privacy Focused AI Interface
 
-**Please note:** This project is a work in progress. The features described below are planned for implementation and are not necessarily available yet. This is not a usable product at this stage.
+**Please note:** This project is a work in progress. The features described below are planned for implementation and are not necessarily available yet. This is not a usable product at this stage. 
+
+At this stage, we only support OpenRouter's API, in the future we will integrate support for various other providers including locally hosted LLMs.
 
 OurCHAI is a general-purpose AI interface designed for those who want to **pay only for what they use, without sacrificing their privacy.** This web application can be configured to run either locally on your machine or across your local network.
 
