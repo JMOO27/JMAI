@@ -13,12 +13,12 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi import HTTPException
 
-from pydantic import ValidationError, config
+from pydantic import ValidationError
 
 from services.chat_service import get_system_prompt
 from services.chat_service import merge_request_variables
 
-from app_logging import log, get_logger
+from app_logging import log
 
 def main():
     app = FastAPI()

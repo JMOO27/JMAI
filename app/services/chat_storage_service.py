@@ -5,7 +5,6 @@ import logging
 from schemas.responses import ChatCompletedReponse
 from pydantic import ValidationError
 from config import get_settings
-from typing import Any
 from app_logging import log
 from contextlib import contextmanager
 settings = get_settings()
@@ -53,7 +52,7 @@ def create_chat(conv_id : int, input : str) -> None:
             INSERT INTO chats (conv_id, content) VALUES (?, ?)
             """, (conv_id, input)
             )
-        log(f"Successfully created a chat for conv_id {conv_id} with content: {input}", level=logging.INFO)
+        log(f"Successfully created a chat for conv_id {conv_id} with content of size {len(input)} characters.", level=logging.INFO)
 
 def get_conv(conv_id : int) -> list[ChatCompletedReponse]:
     with sqlite3.connect(settings.DATABASE_PATH) as conn:
@@ -63,16 +62,18 @@ def get_conv(conv_id : int) -> list[ChatCompletedReponse]:
         WHERE conv_id = (?)
         
         """,(conv_id,))
-        log(f"Successfully retrieved chats for conv_id {conv_id}", level=logging.INFO)
-
+        
     data = cursor.fetchall()
     out : list[ChatCompletedReponse] = []
     for jsn in data:
         try:
             json_data = ChatCompletedReponse.model_validate(json.loads(jsn[0]))
             out.append(json_data)
+            log(f"Successfully retrieved chat for conv_id {conv_id} with content of size {len(jsn[0])} characters.", level=logging.INFO)
         except ValidationError as e:
             log(f"Retrieved JSON was not correct: {e}", level=logging.ERROR)
+
+    log(f"Successfully retrieved chats for conv_id {conv_id} with {len(data)} messages.", level=logging.INFO)
     return out
         
 def open_db():
