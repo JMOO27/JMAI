@@ -9,7 +9,7 @@ config = get_settings()
 
 def get_system_prompt() -> str | None:
     try:
-        with open("main.txt", "r") as f:
+        with open("system_prompt.txt", "r") as f:
             return f.read()
     except Exception as e:
         print(f"Error reading system prompt file: {e}")

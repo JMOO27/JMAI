@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     MODEL : str
     FRONTEND_DIR : str
     DATABASE_PATH : str
+    SYSTEM_PROMPT_PATH : str
     
     model_config = SettingsConfigDict(
         env_file=".env",
