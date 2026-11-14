@@ -3,6 +3,7 @@ import logging
 import uvicorn
 import json
 
+from schemas.responses import ChatCompletedReponse
 from services.chat_service import send_request_to_openrouter
 from schemas import *
 from config import get_settings
@@ -72,10 +73,31 @@ def main():
             except Exception as e:
                 log(f"Error occurred while creating chat: {e}", level=logging.ERROR)
 
+    @app.get("/api/get_conversation")
+    async def get_conversation(conv_id: int) -> list[ChatCompletedReponse]:
+        log(f"Retrieving chat history for conv_id {conv_id}...", level=logging.INFO)
+        try:
+            create_db()
+            chat_history: list[ChatCompletedReponse] = get_conv(conv_id)
+
+            if len(chat_history) == 0:
+                log(f"No chat history found for conv_id {conv_id}.", level=logging.WARNING)
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No chat history found for conv_id {conv_id}."
+                )   
+            log(f"Successfully retrieved chat history for conv_id {conv_id}.", level=logging.INFO)
+            return chat_history
+
+        except Exception as e:
+            log(f"Error occurred while retrieving chat history: {e}", level=logging.ERROR)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Something went wrong while retrieving chat history, {e}."
+            )
+        
     app.mount("/", StaticFiles(directory=settings.FRONTEND_DIR, html=True), name="frontend")
-
     uvicorn.run(app, port=8000)
-
 
 if __name__ == "__main__":
     main()
