@@ -73,7 +73,7 @@ def create_app() -> FastAPI:
 
 def main():
     log("Starting server...")
-    uvicorn.run(create_app(), port=8000)
+    uvicorn.run(create_app(), host="0.0.0.0", port=8000)
 
 
 if __name__ == "__main__":

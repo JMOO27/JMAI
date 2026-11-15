@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     DATABASE_PATH : str
     SYSTEM_PROMPT_PATH : str
     OUTPUT_MODALITIES: list[Literal["text", "image"]] | None = None
+    OPENROUTER_API_MODE: Literal["auto", "chat", "images"] = "auto"
     
     model_config = SettingsConfigDict(
         env_file=".env",

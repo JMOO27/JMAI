@@ -14,4 +14,3 @@ You'll also have the option to encrypt your stored conversations, or disable con
 
 ### Current TODO List is:
 - Implement Privacy Controls at the request layer.
-  
