@@ -13,8 +13,5 @@ One of the biggest benefits of leveraging OpenRouter's API is its potential for 
 You'll also have the option to encrypt your stored conversations, or disable conversation storage entirely!
 
 ### Current TODO List is:
-- Model and Build basic UI interface.
 - Implement Privacy Controls at the request layer.
   
-
-

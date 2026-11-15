@@ -1,96 +1,80 @@
 import logging
-import json
-from pydantic import ValidationError
-import uvicorn
+from pathlib import Path
 
-from services.chat_service import create_request_payload, get_system_prompt, send_request_to_openrouter, filter_completed_response_messages
-from services.chat_storage_service import create_db, get_unique_conv_id, create_conv, create_chat, get_conv
+import uvicorn
+from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
+from pydantic import ValidationError
+
+from services.chat_service import create_request_payload, get_system_prompt, send_request_to_openrouter
+from services.chat_storage_service import create_db, get_unique_conv_id, create_conv, create_chat, get_conv, list_conversations
 from schemas.requests import ChatMessage
 from schemas.responses import ChatCompletedReponse
 from app_logging import log
 from config import get_settings
 
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from fastapi import HTTPException
-
-def main():
+def create_app() -> FastAPI:
     app = FastAPI()
-    log("Starting JMAI server...")
     settings = get_settings()
+    create_db()
 
     @app.post("/api/create_conversation")
-    async def create_conversation():
-        # create a new converstation and return the conv_id
-        # when a new conversation is created, the system prompt will be added to the conversation history as the first message
-        create_db()
+    def create_conversation():
         conv_id = get_unique_conv_id()
         create_conv(conv_id)
-
-        system_prompt : ChatMessage | None = get_system_prompt()
-
+        system_prompt = get_system_prompt()
         if system_prompt is not None:
             create_chat(conv_id, system_prompt)
         return {"conv_id": conv_id}
 
+    @app.get("/api/conversations")
+    def conversations():
+        return list_conversations()
+
     @app.post("/api/send_chat")
-    async def send_chat(input : ChatMessage, conv_id : int):
-        # send and recieve response from OpenRouter API
-
-        # check if inside valid conv
+    def send_chat(input: ChatMessage, conv_id: int):
+        if input.role != "user":
+            raise HTTPException(status_code=422, detail="Only user messages can be sent.")
+        if not input.content:
+            raise HTTPException(status_code=422, detail="A message or image is required.")
         try:
-            create_db()
             get_conv(conv_id)
-        except Exception as e:
-            log(f"Error occurred while checking conversation: {e}", level=logging.ERROR)
-            raise HTTPException(
-                status_code=404,
-                detail=f"Conversation not found for conv_id {conv_id}."
-            )
-    
-        create_chat(conv_id, input)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="Conversation not found.") from exc
 
-        req = create_request_payload(input, conv_id)
+        # save only successful turns so a retry does not duplicate the user's message.
+        payload = create_request_payload(input, conv_id)
         try:
-            response = ChatCompletedReponse.model_validate(send_request_to_openrouter(req))
-        except ValidationError as e:
-            log(f"Error occurred while validating OpenRouter response: {e}", level=logging.ERROR)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Something went wrong while processing the request, {e}."
-            )
+            response = ChatCompletedReponse.model_validate(send_request_to_openrouter(payload))
+            if not response.choices:
+                raise HTTPException(status_code=502, detail="The model returned no reply.")
+        except ValidationError as exc:
+            log("Invalid model response", level=logging.ERROR)
+            raise HTTPException(status_code=502, detail="The model returned an invalid response.") from exc
 
-        create_chat(conv_id, ChatMessage(role=response.choices[0].message.role, content=response.choices[0].message.content))
+        create_chat(conv_id, input)
+        create_chat(conv_id, ChatMessage.model_validate(response.choices[0].message.model_dump()))
         return response
 
     @app.get("/api/get_conversation")
-    async def get_conversation(conv_id: int) -> list[ChatCompletedReponse | ChatMessage]:
-        log(f"Retrieving chat history for conv_id {conv_id}...", level=logging.INFO)
+    def get_conversation(conv_id: int) -> list[ChatCompletedReponse | ChatMessage]:
         try:
-            create_db()
-            chat_history: list[ChatCompletedReponse | ChatMessage] = get_conv(conv_id)
+            return get_conv(conv_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="Conversation not found.") from exc
 
-            if len(chat_history) == 0:
-                log(f"No chat history found for conv_id {conv_id}.", level=logging.WARNING)
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No chat history found for conv_id {conv_id}."
-                )   
-            
-            log(f"Successfully retrieved chat history for conv_id {conv_id}.", level=logging.INFO)
-            return chat_history
+    # Vite output is served on the same origin as the existing API.
+    frontend_dir = Path(settings.FRONTEND_DIR)
+    if (frontend_dir / "dist" / "index.html").is_file():
+        frontend_dir = frontend_dir / "dist"
+    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+    return app
 
-        except Exception as e:
-            if isinstance(e, HTTPException) and e.status_code == 404:
-                log(f"Chat history was not found for conv_id {conv_id}: {e}", level=logging.ERROR)
-            else:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Something went wrong while retrieving chat history, {e}."
-                )
-        
-    app.mount("/", StaticFiles(directory=settings.FRONTEND_DIR, html=True), name="frontend")
-    uvicorn.run(app, port=8000)
+
+def main():
+    log("Starting server...")
+    uvicorn.run(create_app(), port=8000)
+
 
 if __name__ == "__main__":
     main()

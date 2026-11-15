@@ -7,3 +7,12 @@ venv/
 *.json
 *.log
 app.log
+env/
+.tools/
+node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/tsconfig.json

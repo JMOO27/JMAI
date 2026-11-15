@@ -12,7 +12,7 @@ from contextlib import contextmanager
 settings = get_settings()
 
 def create_db() -> None:
-    with sqlite3.connect(settings.DATABASE_PATH) as conn:
+    with transaction() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS conversation (
             id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL UNIQUE
@@ -31,7 +31,7 @@ def create_db() -> None:
         """)
 
 def get_unique_conv_id() -> int:
-    with sqlite3.connect(settings.DATABASE_PATH) as conn:
+    with transaction() as conn:
         cursor = conn.execute("""
             SELECT MAX(id) FROM conversation;
         """)
@@ -42,47 +42,68 @@ def get_unique_conv_id() -> int:
             return max_id + 1
 
 def create_conv(conv_id : int) -> None:
-    with sqlite3.connect(settings.DATABASE_PATH) as conn:
+    with transaction() as conn:
         conn.execute("""
         INSERT INTO conversation (id) VALUES (?)
         """,(conv_id,))
         log(f"Successfully created a conversation with id {conv_id}", level=logging.INFO)
 
 def create_chat(conv_id : int, input : ChatMessage) -> None:
-    # store the entire ChatCompletedResponse object as a JSON string in the database
-    with sqlite3.connect(settings.DATABASE_PATH) as conn:
+    # Store the message, including image content, as JSON.
+    with transaction() as conn:
         conn.execute("""
             INSERT INTO chats (conv_id, content) VALUES (?, ?)
             """, (conv_id, input.model_dump_json())
             )
         log(f"Successfully created a chat for conv_id {conv_id} with system prompt.", level=logging.INFO)
 
+def list_conversations() -> list[dict]:
+    with transaction() as conn:
+        rows = conn.execute("""
+            SELECT conversation.id, (
+                SELECT content FROM chats
+                WHERE conv_id = conversation.id
+                    AND json_extract(content, '$.role') = 'user'
+                ORDER BY chat_id LIMIT 1
+            )
+            FROM conversation
+            ORDER BY (SELECT MAX(chat_id) FROM chats WHERE conv_id = conversation.id) DESC,
+                conversation.id DESC
+        """).fetchall()
+
+    conversations = []
+    
+    for conv_id, first_message in rows:
+        content = json.loads(first_message).get("content") if first_message else None
+        if isinstance(content, list):
+            content = " ".join(part.get("text", "") for part in content if part.get("type") == "text")
+        title = " ".join((content or ("Image chat" if first_message else "New chat")).split())[:80]
+        conversations.append({"conv_id": conv_id, "title": title or "Image chat"})
+    return conversations
+
+
 def get_conv(conv_id : int) -> list[ChatCompletedReponse | ChatMessage]:
-    with sqlite3.connect(settings.DATABASE_PATH) as conn:
+    with transaction() as conn:
+        if conn.execute("SELECT 1 FROM conversation WHERE id = ?", (conv_id,)).fetchone() is None:
+            raise LookupError(f"Conversation {conv_id} not found")
         cursor = conn.execute("""
         SELECT content
         FROM chats
         WHERE conv_id = (?)
+        ORDER BY chat_id
         
         """,(conv_id,))
-        
-    data = cursor.fetchall()
+        data = cursor.fetchall()
     out : list[ChatCompletedReponse | ChatMessage] = []
-    # we really shouldnt be doing the validation here
+    # Read both older completion objects and current plain message records.
     for jsn in data:
         try:
-            json_data = ChatCompletedReponse.model_validate(json.loads(jsn[0]))
-            out.append(json_data)
-            log(f"Successfully retrieved chat for conv_id {conv_id} with content of size {len(jsn[0])} characters.", level=logging.INFO)
-        except ValidationError as e:
-            try:
-                # the system prompt is not stored as a chatcompleted response
-                log(f"Retrieved JSON was not a ChatCompletedResponse, trying to validate as ChatMessage: {e}", level=logging.WARNING)
-                json_data = ChatMessage.model_validate(json.loads(jsn[0]))
-                out.append(json_data)
-            except ValidationError as e:
-                log(f"Retrieved JSON was not correct: {e}", level=logging.ERROR)
-                continue
+            record = json.loads(jsn[0])
+            schema = ChatCompletedReponse if "choices" in record else ChatMessage
+            out.append(schema.model_validate(record))
+        except (ValidationError, json.JSONDecodeError):
+            log(f"Invalid stored message in conversation {conv_id}", level=logging.ERROR)
+            raise
 
     log(f"Successfully retrieved chats for conv_id {conv_id} with {len(data)} messages.", level=logging.INFO)
     return out

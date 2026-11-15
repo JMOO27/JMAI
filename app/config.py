@@ -2,6 +2,7 @@ from functools import lru_cache
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Literal
 
 class Settings(BaseSettings):
     API_KEY : SecretStr
@@ -9,6 +10,7 @@ class Settings(BaseSettings):
     FRONTEND_DIR : str
     DATABASE_PATH : str
     SYSTEM_PROMPT_PATH : str
+    OUTPUT_MODALITIES: list[Literal["text", "image"]] | None = None
     
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from schemas.requests import ChatMessage
 
 class ReasoningDetails(BaseModel):
     type : str
@@ -6,18 +7,16 @@ class ReasoningDetails(BaseModel):
     format : str
     index : int
 
-class Message(BaseModel):
-    role : str
-    content : str
-    refusal : str | None
-    reasoning : str | None
+class Message(ChatMessage):
+    refusal : str | None = None
+    reasoning : str | None = None
     reasoning_details : list[ReasoningDetails] | None = None
 
 class Choices(BaseModel):
     index : int
-    logprobs : dict[str, object] | None
-    finish_reason : str | None
-    native_finish_reason : str | None
+    logprobs : dict[str, object] | None = None
+    finish_reason : str | None = None
+    native_finish_reason : str | None = None
     message : Message
 
 class Prompt_Tokens_Details(BaseModel):
@@ -51,9 +50,9 @@ class ChatCompletedReponse(BaseModel):
     object : str
     created : int
     model : str
-    provider : str
-    system_fingerprint : str | None
-    service_tier : str | None
+    provider : str | None = None
+    system_fingerprint : str | None = None
+    service_tier : str | None = None
     choices : list[Choices]
-    usage : Usage
+    usage : dict[str, object] | None = None
 

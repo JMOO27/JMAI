@@ -9,15 +9,14 @@ from config import get_settings
 
 from typing import Any
 from fastapi import HTTPException
-from pydantic.v1 import ValidationError
+from pydantic import ValidationError
 
 config = get_settings()
 
 def get_system_prompt() -> ChatMessage | None:
     try:
-        with open("system_prompt.txt", "r") as f:
+        with open(config.SYSTEM_PROMPT_PATH, "r", encoding="utf-8") as f:
             system_prompt = {"role": "system", "content": f.read().strip()}
-            ChatMessage.model_validate(system_prompt)
             return ChatMessage.model_validate(system_prompt)
     except Exception as e:
         if isinstance(e, ValidationError):
@@ -27,75 +26,39 @@ def get_system_prompt() -> ChatMessage | None:
     
     return None
 
-def filter_completed_response_messages(input : list[ChatCompletedReponse]) -> list[ChatMessage]:
-    # return a list of messages from the completed response objects
-    # used to build expected chat history for OpenRouter request
+def filter_completed_response_messages(input : list[ChatCompletedReponse | ChatMessage]) -> list[ChatMessage]:
+    # Keep all turns, including system prompts and images, in their stored order.
     messages : list[ChatMessage] = []
     for item in input:
-        try:
-            completed_response = ChatCompletedReponse.model_validate(item)
-
-            message= {"role": completed_response.choices[0].message.role, "content": completed_response.choices[0].message.content}
-            validated_message = ChatMessage.model_validate(message)
-
-            messages.append(validated_message)
-
-        except Exception as e:
-            if isinstance(e, ValidationError):
-                log(f"Completed response message is invalid: {e}", level=logging.ERROR)
-            log(f"Error occurred while filtering completed response messages: {e}", level=logging.ERROR)
+        if isinstance(item, ChatMessage):
+            messages.append(item)
+        elif item.choices:
+            messages.append(ChatMessage.model_validate(item.choices[0].message.model_dump()))
     return messages
 
 def create_request_payload(input: ChatMessage, conv_id: int) -> RequestPayload:
-    # build the request payload for OpenRouter API
-    payload = None
-    context : list[ChatMessage] = []
-    # get the conversation history
-    past_messages = filter_completed_response_messages(get_conv(conv_id))
-
-    # create the context
-    for message in past_messages:
-        context.append(message)
-
-    # add the latest message to the context
+    context = filter_completed_response_messages(get_conv(conv_id))
     context.append(input)
-
-    payload = RequestPayload(
+    return RequestPayload(
         model = config.MODEL,
-        messages = context
+        messages = context,
+        modalities = config.OUTPUT_MODALITIES,
     )
-
-    try:
-        RequestPayload.model_validate(payload)
-
-    except Exception as e:
-        if isinstance(e, ValidationError):
-            log(f"Request payload is invalid: {e}", level=logging.ERROR)
-        else:
-            log(f"Error occurred while validating request payload: {e}", level=logging.ERROR)
-            log(f"Error occurred while validating response: {e}", level=logging.ERROR)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Invalid response from OpenRouter API."
-            )
-
-    return payload
 
 def send_request_to_openrouter(payload : RequestPayload) -> dict[Any, Any] | None:
     settings = get_settings()
 
-    response = requests.post(
-        url="https://openrouter.ai/api/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {settings.API_KEY.get_secret_value()}",
-        },
-        data = payload.model_dump_json()
-    )
-
-    match response.status_code:
-        case 200:
-            return response.json()
-
-        case _:
-            print(response.status_code)
-            return None
+    try:
+        response = requests.post(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            headers={"Authorization": f"Bearer {settings.API_KEY.get_secret_value()}"},
+            json=payload.model_dump(exclude_none=True),
+            timeout=180,
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.Timeout as exc:
+        raise HTTPException(status_code=504, detail="The model timed out. Please try again.") from exc
+    except (requests.RequestException, ValueError) as exc:
+        log("OpenRouter request failed", level=logging.ERROR)
+        raise HTTPException(status_code=502, detail="The model request failed. Check the server configuration and try again.") from exc
