@@ -1,6 +1,6 @@
-# JMAI - The Privacy Focused AI Interface
+# JMAI - The Privacy Focused AI Interface v0.1
 
-**Please note:** This project is a work in progress. The features described below are planned for implementation and are not necessarily available yet. This is not a usable product at this stage. 
+**Please note:** This project is a work in progress. The features described below are planned for implementation and are not necessarily available yet. Thus far, the project includes a web UI and is functional. Privacy controls have not been implemented yet. 
 
 At this stage, we only support OpenRouter's API, in the future we will integrate support for various other providers including locally hosted LLMs.
 
@@ -14,3 +14,9 @@ You'll also have the option to encrypt your stored conversations, or disable con
 
 ### Current TODO List is:
 - Implement Privacy Controls at the request layer.
+    - Automated selection of best models based on advertised attributes. (i.e country, provider, retention policy, etc.)
+    - Implement Microsoft Presidio to act as the middleware between the backend and OpenRouter API.
+    - Implement guided user tutorial on proper OpenRouter configurations.
+    - Implement custom redaction feature within the UI.
+- Add AI configuration options inside UI.
+- Improve UI.
